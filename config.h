@@ -27,8 +27,6 @@
 # define ENABLE_SCHED
 #endif
 
-#ifdef __arm__
 #define ENABLE_GPIO
-#endif
 
 #endif

@@ -126,7 +126,7 @@ void
 usage (void)
 {
 	printf (
-"Usage: radioclkd2 [ -s poll|iwait|timepps ] [ -t dcf77|msf|wwvb ] [ -n <shm start unit> ] [ -d ] [ -v ] tty[:[-]line[:fudgeoffs]] ...\n"
+"Usage: radioclkd2 [ -s poll|iwait|timepps|gpio ] [ -t dcf77|msf|wwvb ] [ -n <shm start unit> ] [ -d ] [ -v ] tty[:[-]line[:fudgeoffs]] ...\n"
 "   -s poll: poll the serial port 1000 times/sec (poor)\n"
 "   -s iwait: wait for serial port interrupts (ok)\n"
 "   -s timepps: use the timepps interface (good)\n"

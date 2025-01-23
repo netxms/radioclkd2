@@ -2,14 +2,14 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.57)
-AC_INIT(radioclkd2,0.07)
+AC_INIT(radioclkd2,0.08)
 AM_INIT_AUTOMAKE(foreign)
 
 AM_MAINTAINER_MODE
 
 AC_CONFIG_SRCDIR([clock.c])
 
-AC_CONFIG_HEADER([autoconf.h])
+AC_CONFIG_HEADERS([autoconf.h])
 AC_CONFIG_FILES([Makefile])
 
 
@@ -21,12 +21,9 @@ AC_PROG_CC
 #AC_CHECK_LIB([m], [log])
 
 # Checks for header files.
-AC_HEADER_STDC
 AC_HEADER_TIME
 #AC_HEADER_STDBOOL
 AC_CHECK_HEADERS([sys/timepps.h sys/mman.h sched.h sys/ioctl.h fcntl.h syslog.h])
-
-#AC_CHECK_HEADERS([stdlib.h string.h unistd.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST

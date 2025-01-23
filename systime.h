@@ -15,5 +15,10 @@
 # endif
 #endif
 
+#if !HAVE_TIMEGM
+
+time_t timegm(struct tm *_tm);
+
+#endif
 
 #endif

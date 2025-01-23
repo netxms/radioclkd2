@@ -34,7 +34,6 @@
 
 #include "logger.h"
 #include "settings.h"
-#include "utctime.h"
 
 
 #define	CENTURY		(2000)	//added to 2 digit years
@@ -159,20 +158,18 @@ dcf77Decode ( clkInfoT* clock, time_f minstart )
 	loggerf ( LOGGER_DEBUG, "DCF77 time: %04d-%02d-%02d (day %d) %02d:%02d %s%s%s%s\n",
 		dectime.tm_year+1900, dectime.tm_mon+1, dectime.tm_mday,
 		dectime.tm_wday, dectime.tm_hour, dectime.tm_min,
-		GET(17) ? "CEST" : "CET", GET(16) ? " timezone change soon":"",
+		clock->utc ? "UTC" : (GET(17) ? "CEST" : "CET"), GET(16) ? " timezone change soon":"",
 		GET(19) ? " leap second soon":"", GET(15) ? " res ant" : " main ant" );
 
 
-//	setenv("TZ", "", 1);
-//
-//	dectimet = mktime ( &dectime );
-	dectimet = UTCtime ( &dectime );
+	dectimet = timegm( &dectime );
 
 	if ( dectimet == (time_t)(-1) )
 		return -1;
 
 	//correct for DST offset...
-	dectimet -= GET(17) ? 2*60*60 : 1*60*60;
+	if (!clock->utc)
+		dectimet -= GET(17) ? 2*60*60 : 1*60*60;
 
 	//right - the time seems OK now...
 

@@ -24,6 +24,7 @@ struct clkInfoS
 	int	status;
 	time_f	changetime;
 
+	int     utc;            // 1 if time received in UTC
 
 	//store 2 minutes of data - there will be a complete minute of data in here somewhere...
 	signed char	data[120];
@@ -51,7 +52,7 @@ struct clkInfoS
 
 void clkDumpData ( const clkInfoT* clock );
 
-clkInfoT* clkCreate ( int inverted, int shmunit, time_f fudgeoffset, int clocktype );
+clkInfoT* clkCreate ( int inverted, int shmunit, time_f fudgeoffset, int clocktype, int utc );
 
 void clkDataClear ( clkInfoT* clock );
 

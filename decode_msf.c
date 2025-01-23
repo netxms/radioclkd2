@@ -30,7 +30,6 @@
 
 #include "clock.h"
 #include "decode_msf.h"
-#include "utctime.h"
 
 #include "logger.h"
 #include "settings.h"
@@ -173,10 +172,7 @@ msfDecode ( clkInfoT* clock, time_f minstart )
 
 	loggerf ( LOGGER_DEBUG, "MSF time: %04d-%02d-%02d (day %d) %02d:%02d %s%s\n", dectime.tm_year+1900, dectime.tm_mon, dectime.tm_mday, dectime.tm_wday, dectime.tm_hour, dectime.tm_min, GET_B(58) ? "BST" : "GMT", GET_B(53) ? " timezone change soon":"" );
 
-//	setenv("TZ", "", 1);
-//
-//	dectimet = mktime ( &dectime );
-	dectimet = UTCtime ( &dectime );
+	dectimet = timegm ( &dectime );
 
 	if ( dectimet == (time_t)(-1) )
 		return -1;

@@ -34,7 +34,6 @@
 
 #include "logger.h"
 #include "settings.h"
-#include "utctime.h"
 
 
 #define	CENTURY		(2000)	//added to 2 digit years
@@ -129,7 +128,7 @@ wwvbDecode ( clkInfoT* clock, time_f minstart )
 
 	loggerf ( LOGGER_DEBUG, "WWVB time: %04d-%03d %02d:%02d %s%s\n", dectime.tm_year+1900, dectime.tm_mday, dectime.tm_hour, dectime.tm_min, GET(55)?" leap year":"", GET(56)?" leap second soon":"" );
 
-	dectimet = UTCtime ( &dectime );
+	dectimet = timegm( &dectime );
 	if ( dectimet == (time_t)(-1) )
 		return -1;
 

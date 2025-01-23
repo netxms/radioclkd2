@@ -126,7 +126,7 @@ void
 usage (void)
 {
 	printf (
-"Usage: radioclkd2 [ -s poll|iwait|timepps|gpio ] [ -t dcf77|msf|wwvb ] [ -n <shm start unit> ] [ -d ] [ -v ] tty[:[-]line[:fudgeoffs]] ...\n"
+"Usage: radioclkd2 [ -s poll|iwait|timepps|gpio ] [ -t dcf77|gps|msf|wwvb ] [ -n <shm start unit> ] [ -d ] [ -v ] tty[:[-]line[:fudgeoffs]] ...\n"
 "   -s poll: poll the serial port 1000 times/sec (poor)\n"
 "   -s iwait: wait for serial port interrupts (ok)\n"
 "   -s timepps: use the timepps interface (good)\n"
@@ -143,6 +143,7 @@ usage (void)
 "  (gpio not available)\n"
 #endif
 "   -t dcf77: 77.5KHz Germany/Europe DCF77 Radio Station (default)\n"
+"   -t gps: DCF77 encoded data from GPS receiver\n"
 "   -t msf: UK 60KHz MSF Radio Station\n"
 "   -t wwvb: US 60KHz WWVB Fort Collins Radio Station\n"
 "   -n shm#: NTP shared memory start unit - default is 0\n"
@@ -163,6 +164,7 @@ main ( int argc, char** argv )
 	int	serialmode;
 	int	shmunit;
 	int	clocktype = CLOCKTYPE_DCF77;
+	int     utc = 0;
 	char*	arg;
 	char*	parm;
 	serDevT*	devfirst;
@@ -244,6 +246,11 @@ main ( int argc, char** argv )
                                 }
                                 if ( strcasecmp ( parm, "dcf77" ) == 0 )
                                         clocktype = CLOCKTYPE_DCF77;
+				else if ( strcasecmp ( parm, "gps" ) == 0 )
+				{
+                                        clocktype = CLOCKTYPE_DCF77;
+					utc = 1;
+				}
                                 else if ( strcasecmp ( parm, "msf" ) == 0 )
                                         clocktype = CLOCKTYPE_MSF;
                                 else if ( strcasecmp ( parm, "wwvb" ) == 0 )
@@ -352,7 +359,7 @@ main ( int argc, char** argv )
 			if ( serline == NULL )
 				loggerf ( LOGGER_NOTE, "Error: failed to attach to serial line '%s'\n", arg );
 
-			clock = clkCreate ( negate, shmunit, fudgeoffset, clocktype );
+			clock = clkCreate ( negate, shmunit, fudgeoffset, clocktype, utc );
 			if ( clock == NULL )
 				loggerf ( LOGGER_NOTE, "Error: failed to create clock for serial line '%s'\n", arg );
 

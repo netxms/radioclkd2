@@ -41,7 +41,7 @@ AC_TYPE_SIGNAL
 AC_CHECK_FUNCS([gettimeofday],,[AC_MSG_ERROR([We need gettimeofday - sub-second accuracy is essential])])
 AC_CHECK_FUNCS([strcasecmp stricmp strcmpi],break,[AC_MSG_ERROR([We need strcasecmp, stricmp or strcmpi])])
 AC_CHECK_FUNCS([tzset timegm setenv])
-AC_CHECK_FUNCS([mlockall sched_get_priority_level sched_setscheduler])
+AC_CHECK_FUNCS([mlockall sched_get_priority_max sched_setscheduler])
 
 #AC_FUNC_MALLOC
 #AC_CHECK_FUNCS([memset setenv sqrt strchr])

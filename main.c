@@ -63,21 +63,13 @@ typedef struct
 #define	MAX_CLOCKS		(16)
 serClockT	clocklist[MAX_CLOCKS];
 
-
-
 void StartClocks ( serDevT* serdev );
-
-
 
 void
 setRealtime (void)
 {
 #ifdef ENABLE_SCHED
 	struct sched_param schedp;
-#endif
-
-
-#ifdef ENABLE_SCHED
 	/* set realtime scheduling priority */
 	memset(&schedp, 0, sizeof(schedp));
 	schedp.sched_priority = sched_get_priority_max(SCHED_FIFO);	
@@ -147,7 +139,8 @@ usage (void)
 "   -t msf: UK 60KHz MSF Radio Station\n"
 "   -t wwvb: US 60KHz WWVB Fort Collins Radio Station\n"
 "   -n shm#: NTP shared memory start unit - default is 0\n"
-"   -d: debug mode. runs in the foreground and print pulses\n"
+"   -d: debug mode (runs in the foreground and print pulses)\n"
+"   -f: foreground mode\n"
 "   -v: verbose mode.\n"
 "   tty: serial port for clock\n"
 "   line: one of dcd, cts, dsr or rng - default is dcd\n"
@@ -165,6 +158,7 @@ main ( int argc, char** argv )
 	int	shmunit;
 	int	clocktype = CLOCKTYPE_DCF77;
 	int     utc = 0;
+	int     foreground = 0;
 	char*	arg;
 	char*	parm;
 	serDevT*	devfirst;
@@ -265,6 +259,10 @@ main ( int argc, char** argv )
 
 			case 'v':
 				verboseLevel ++;
+				break;
+
+			case 'f':
+				foreground = 1;
 				break;
 
 			case 'n':
@@ -380,8 +378,6 @@ main ( int argc, char** argv )
 		argv++;
 	}
 
-
-
 	if ( !debugLevel )
 	{
 		//non-debug mode - close stderr logging, fork, and set realtime priority
@@ -397,7 +393,8 @@ main ( int argc, char** argv )
 			loggerSyslog ( 1, LOGGER_DEBUG );
 			break;
 		}
-		setDemon();
+		if (!foreground)
+			setDemon();
 		setRealtime();
 	}
 	else
@@ -407,7 +404,6 @@ main ( int argc, char** argv )
 		case 0:
 			loggerSetFile ( stderr, LOGGER_DEBUG );
 			break;
-		case 1:
 		default:
 			loggerSetFile ( stderr, LOGGER_TRACE );
 			break;
@@ -424,7 +420,7 @@ main ( int argc, char** argv )
 	devnext = devfirst;
 
 	//we don't want to do this if we're debugging clocks...
-	if ( !debugLevel )
+	if ( !debugLevel && !foreground )
 	{
 
 		while ( (devnext = serGetDev(devnext)) != NULL )
@@ -453,18 +449,16 @@ main ( int argc, char** argv )
 	else
 	{
 		if ( serGetDev(devnext) != NULL )
-			loggerf ( LOGGER_INFO, "Additional serial lines ignored in debug mode\n" );
+			loggerf ( LOGGER_INFO, "Additional serial lines ignored in foreground or debug mode\n" );
 	}
 
 	StartClocks ( devfirst );
 
-	loggerf ( LOGGER_INFO, "parent process terminated\n" );
-	exit(1);
+	if (!debugLevel && !foreground)
+		loggerf ( LOGGER_INFO, "parent process terminated\n" );
 
-
-	return 0;	//to stop warnings
+	return 0;
 }
-
 
 void
 StartClocks ( serDevT* serdev )

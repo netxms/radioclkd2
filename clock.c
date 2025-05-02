@@ -26,7 +26,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "memory.h"
 
@@ -284,6 +285,12 @@ clkSendTime ( clkInfoT* clock )
 			shmStore ( clock->shm, clock->radiotime, clock->radiotime + average, maxerr, clock->radioleap );
 	}
 
+	int fh = open("/tmp/clock-timestamp", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if (fh >= 0) {
+		int64_t now = time(NULL);
+		write(fh, &now, sizeof(int64_t));
+		close(fh);
+	}
 }
 
 void

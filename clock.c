@@ -83,8 +83,7 @@ clkCreate ( int inverted, int shmunit, time_f fudgeoffset, int clocktype, int ut
 
 	clkinfo->utc = utc;
 
-	if ( !debugLevel )
-		clkinfo->shm = shmCreate ( shmunit );
+	clkinfo->shm = shmCreate ( shmunit );
 
 	return clkinfo;
 }
@@ -274,15 +273,13 @@ clkSendTime ( clkInfoT* clock )
 
 		loggerf ( LOGGER_DEBUG, "clock: radio time "TIMEF_FORMAT", pc time "TIMEF_FORMAT"\n", clock->radiotime, clock->pctime );
 
-		if ( !debugLevel )
-			shmStore ( clock->shm, clock->radiotime, clock->pctime, maxerr, clock->radioleap );
+		shmStore ( clock->shm, clock->radiotime, clock->pctime, maxerr, clock->radioleap );
 	}
 	else
 	{
 		loggerf ( LOGGER_DEBUG, "clock: radio time "TIMEF_FORMAT", average pctime "TIMEF_FORMAT", error +-"TIMEF_FORMAT"\n", clock->radiotime, clock->radiotime + average, maxerr );
 
-		if ( !debugLevel )
-			shmStore ( clock->shm, clock->radiotime, clock->radiotime + average, maxerr, clock->radioleap );
+		shmStore ( clock->shm, clock->radiotime, clock->radiotime + average, maxerr, clock->radioleap );
 	}
 
 	int fh = open("/tmp/clock-timestamp", O_WRONLY | O_CREAT | O_TRUNC, 0644);

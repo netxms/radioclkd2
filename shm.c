@@ -33,6 +33,18 @@
 #include "timef.h"
 #include "logger.h"
 
+/**
+ * Set memory barrier
+ */
+static inline void MemoryBarrier()
+{
+#ifdef __GNUC__
+	__sync_synchronize();
+#else
+	__asm__ __volatile__ ("" ::: "memory");
+#endif
+}
+
 shmTimeT*
 shmCreate ( int unit )
 {
@@ -62,7 +74,8 @@ shmStore ( shmTimeT* volatile shm, time_f radioclock, time_f localrecv, time_f t
 	time_f2timeval ( localrecv, &localrecvtv );
 
 	shm->valid = 0;
-
+	shm->count++;
+   MemoryBarrier();
 	shm->mode = 1;
 	shm->count++;
 	shm->clockTimeStampSec = radioclocktv.tv_sec;
@@ -70,9 +83,10 @@ shmStore ( shmTimeT* volatile shm, time_f radioclock, time_f localrecv, time_f t
 	shm->receiveTimeStampSec = localrecvtv.tv_sec;
 	shm->receiveTimeStampUSec = localrecvtv.tv_usec;
 	shm->leap = leap;
-	shm->precision = log(time_err)/log(2);
+	shm->precision = log(time_err) / log(2);
+   MemoryBarrier();
 	shm->count++;
-
+   MemoryBarrier();
 	shm->valid = 1;
 }
 

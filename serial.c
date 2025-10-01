@@ -289,10 +289,10 @@ serWaitForSerialChange ( serDevT* dev )
 #ifdef ENABLE_GPIO
 	case SERPORT_MODE_GPIO:
 		pfd.fd = dev->fd;
-		pfd.events = POLLPRI | POLLERR;
+		pfd.events = POLLPRI;
 
 		i = poll(&pfd, 1, 10000); /* timeout 10 seconds */
-		if (i != 1 && !(pfd.revents & POLLPRI))
+		if ((i != 1) || !(pfd.revents & POLLPRI))
 			return -1;
 
 		gettimeofday(&tv, NULL);

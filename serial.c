@@ -259,7 +259,7 @@ serWaitForSerialChange ( serDevT* dev )
 	int		ppslines;
 #endif
 #ifdef ENABLE_GPIO
-	struct pollfd  pollfds[1];
+	struct pollfd pfd;
 #endif
 
 	if ( dev->modemlines == 0 )
@@ -288,17 +288,17 @@ serWaitForSerialChange ( serDevT* dev )
 
 #ifdef ENABLE_GPIO
 	case SERPORT_MODE_GPIO:
-		pollfds[0].fd = dev->fd;
-		pollfds[0].events = POLLERR;
+		pfd.fd = dev->fd;
+		pfs.events = POLLPRI | POLLERR;
 
-		i = poll(pollfds, 1, 10000); /* timeout 10 seconds */
-		if (i != 1 && !(pollfds[0].revents & POLLERR) )
+		i = poll(&pfd, 1, 10000); /* timeout 10 seconds */
+		if (i != 1 && !(pfd.revents & POLLPRI))
 			return -1;
 
-		gettimeofday ( &tv, NULL );
-		timeval2time_f ( &tv, timef );
+		gettimeofday(&tv, NULL);
+		timeval2time_f(&tv, timef);
 
-		if ( serGetDevStatusLines ( dev, timef ) < 0 )
+		if (serGetDevStatusLines(dev, timef) < 0)
 			return -1;
 
 		return 0;

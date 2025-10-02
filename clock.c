@@ -67,7 +67,7 @@ clkDumpData ( const clkInfoT* clock )
 
 
 clkInfoT*
-clkCreate ( int inverted, int shmunit, time_f fudgeoffset, int clocktype, int utc )
+clkCreate ( int inverted, int shmunit, time_f fudgeoffset, int clocktype, int dcf77tz )
 {
 	clkInfoT*	clkinfo;
 
@@ -81,7 +81,7 @@ clkCreate ( int inverted, int shmunit, time_f fudgeoffset, int clocktype, int ut
 	clkinfo->numdata = 0;
 	clkinfo->clocktype=clocktype;
 
-	clkinfo->utc = utc;
+	clkinfo->dcf77tz = dcf77tz;
 
 	clkinfo->shm = shmCreate ( shmunit );
 

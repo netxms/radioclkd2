@@ -157,7 +157,7 @@ main ( int argc, char** argv )
 	int	serialmode;
 	int	shmunit;
 	int	clocktype = CLOCKTYPE_DCF77;
-	int     utc = 0;
+	int     dcf77tz = DCF77_TIMEZONE_CET;
 	int     foreground = 0;
 	char*	arg;
 	char*	parm;
@@ -239,11 +239,18 @@ main ( int argc, char** argv )
                                         parm = argv[0];
                                 }
                                 if ( strcasecmp ( parm, "dcf77" ) == 0 )
+				{
                                         clocktype = CLOCKTYPE_DCF77;
+				}
 				else if ( strcasecmp ( parm, "gps" ) == 0 )
 				{
                                         clocktype = CLOCKTYPE_DCF77;
-					utc = 1;
+					dcf77tz = DCF77_TIMEZONE_UTC;
+				}
+				else if ( strcasecmp ( parm, "timecode" ) == 0 )
+				{
+                                        clocktype = CLOCKTYPE_DCF77;
+					dcf77tz = DCF77_TIMEZONE_LOCAL;
 				}
                                 else if ( strcasecmp ( parm, "msf" ) == 0 )
                                         clocktype = CLOCKTYPE_MSF;
@@ -357,7 +364,7 @@ main ( int argc, char** argv )
 			if ( serline == NULL )
 				loggerf ( LOGGER_NOTE, "Error: failed to attach to serial line '%s'\n", arg );
 
-			clock = clkCreate ( negate, shmunit, fudgeoffset, clocktype, utc );
+			clock = clkCreate ( negate, shmunit, fudgeoffset, clocktype, dcf77tz );
 			if ( clock == NULL )
 				loggerf ( LOGGER_NOTE, "Error: failed to create clock for serial line '%s'\n", arg );
 

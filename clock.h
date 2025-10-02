@@ -12,6 +12,9 @@
 #define CLOCKTYPE_MSF	1
 #define CLOCKTYPE_WWVB	2
 
+#define DCF77_TIMEZONE_CET   0
+#define DCF77_TIMEZONE_UTC   1
+#define DCF77_TIMEZONE_LOCAL 2
 
 typedef struct clkInfoS clkInfoT;
 struct clkInfoS
@@ -24,7 +27,7 @@ struct clkInfoS
 	int	status;
 	time_f	changetime;
 
-	int     utc;            // 1 if time received in UTC
+	int     dcf77tz;        // Time zone used for decoding DCF77 messages
 
 	//store 2 minutes of data - there will be a complete minute of data in here somewhere...
 	signed char	data[120];
@@ -52,7 +55,7 @@ struct clkInfoS
 
 void clkDumpData ( const clkInfoT* clock );
 
-clkInfoT* clkCreate ( int inverted, int shmunit, time_f fudgeoffset, int clocktype, int utc );
+clkInfoT* clkCreate ( int inverted, int shmunit, time_f fudgeoffset, int clocktype, int dcf77tz );
 
 void clkDataClear ( clkInfoT* clock );
 

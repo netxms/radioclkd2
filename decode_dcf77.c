@@ -130,8 +130,6 @@ dcf77Decode ( clkInfoT* clock, time_f minstart )
 		return -1;
 
 	memset ( &dectime, 0, sizeof(dectime) );
-
-
 	dectime.tm_year = dcf77GetBCD ( clock, 50, 8 ) + CENTURY - 1900;
 	dectime.tm_mon = dcf77GetBCD ( clock, 45, 5 ) - 1;
 	dectime.tm_mday = dcf77GetBCD ( clock, 36, 6 );
@@ -139,7 +137,7 @@ dcf77Decode ( clkInfoT* clock, time_f minstart )
 	dectime.tm_hour = dcf77GetBCD ( clock, 29, 6 );
 	dectime.tm_min = dcf77GetBCD ( clock, 21, 7 );
 	dectime.tm_sec = 0;
-	dectime.tm_isdst = 0;	//decode as UTC, then correct for CET/CEST later
+	dectime.tm_isdst = (clock->dcf77tz == DCF77_TIMEZONE_LOCAL) ? -1 : 0;	// if not set to local time zone then decode as UTC, then correct for CET/CEST later
 
 	if ( dectime.tm_wday == 7 )
 		dectime.tm_wday = 0;
@@ -158,27 +156,24 @@ dcf77Decode ( clkInfoT* clock, time_f minstart )
 	loggerf ( LOGGER_DEBUG, "DCF77 time: %04d-%02d-%02d (day %d) %02d:%02d %s%s%s%s\n",
 		dectime.tm_year+1900, dectime.tm_mon+1, dectime.tm_mday,
 		dectime.tm_wday, dectime.tm_hour, dectime.tm_min,
-		clock->utc ? "UTC" : (GET(17) ? "CEST" : "CET"), GET(16) ? " timezone change soon":"",
-		GET(19) ? " leap second soon":"", GET(15) ? " res ant" : " main ant" );
+		(clock->dcf77tz == DCF77_TIMEZONE_UTC) ? "UTC" :
+			((clock->dcf77tz == DCF77_TIMEZONE_LOCAL) ? "local" : (GET(17) ? "CEST" : "CET")),
+		GET(16) ? " timezone change soon" : "",
+		GET(19) ? " leap second soon" : "",
+		GET(15) ? " res ant" : " main ant");
 
-
-	dectimet = timegm( &dectime );
-
+	dectimet = (clock->dcf77tz == DCF77_TIMEZONE_LOCAL) ? mktime( &dectime ) :	timegm( &dectime );
 	if ( dectimet == (time_t)(-1) )
 		return -1;
 
 	//correct for DST offset...
-	if (!clock->utc)
+	if (clock->dcf77tz == DCF77_TIMEZONE_CET)
 		dectimet -= GET(17) ? 2*60*60 : 1*60*60;
-
-	//right - the time seems OK now...
 
 	clock->pctime = minstart;
 	clock->radiotime = dectimet + clock->fudgeoffset;
 	clock->radioleap = GET(19) ? LEAP_ADDSECOND : LEAP_NOWARNING;
 
 	clock->secondssincetime = 0;
-
-
 	return 0;
 }

@@ -50,6 +50,8 @@ struct clkInfoS
 	int	ppsindex;
 
 	shmTimeT*	shm;
+
+	int		rx_state;	//0=initial, 1=receiving, 2=lost
 };
 
 

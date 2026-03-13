@@ -5,6 +5,7 @@
 
 void loggerSetFile ( FILE* file, int level );
 void loggerSyslog ( int flag, int level );
+int loggerOpenFile ( const char *dirpath, const char *devname, int level );
 
 //log levels from 0 (always shown), and +1 for higher debug levels
 #define	LOGGER_NOTE	(0)

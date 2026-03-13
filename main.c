@@ -118,7 +118,7 @@ void
 usage (void)
 {
 	printf (
-"Usage: radioclkd2 [ -s poll|iwait|timepps|gpio ] [ -t dcf77|gps|msf|wwvb ] [ -n <shm start unit> ] [ -d ] [ -v ] tty[:[-]line[:fudgeoffs]] ...\n"
+"Usage: radioclkd2 [ -s poll|iwait|timepps|gpio ] [ -t dcf77|gps|msf|wwvb ] [ -n <shm start unit> ] [ -l logdir ] [ -d ] [ -v ] tty[:[-]line[:fudgeoffs]] ...\n"
 "   -s poll: poll the serial port 1000 times/sec (poor)\n"
 "   -s iwait: wait for serial port interrupts (ok)\n"
 "   -s timepps: use the timepps interface (good)\n"
@@ -139,6 +139,7 @@ usage (void)
 "   -t msf: UK 60KHz MSF Radio Station\n"
 "   -t wwvb: US 60KHz WWVB Fort Collins Radio Station\n"
 "   -n shm#: NTP shared memory start unit - default is 0\n"
+"   -l logdir: log directory (default /var/log/radioclkd2)\n"
 "   -d: debug mode (runs in the foreground and print pulses)\n"
 "   -f: foreground mode\n"
 "   -v: verbose mode.\n"
@@ -159,6 +160,7 @@ main ( int argc, char** argv )
 	int	clocktype = CLOCKTYPE_DCF77;
 	int     dcf77tz = DCF77_TIMEZONE_CET;
 	int     foreground = 0;
+	char*	logdir = "/var/log/radioclkd2";
 	char*	arg;
 	char*	parm;
 	serDevT*	devfirst;
@@ -270,6 +272,20 @@ main ( int argc, char** argv )
 
 			case 'f':
 				foreground = 1;
+				break;
+
+			case 'l':
+				if ( strlen(arg) > 2 )
+				{
+					parm = arg + 2;
+				}
+				else
+				{
+					argc--;
+					argv++;
+					parm = argv[0];
+				}
+				logdir = parm;
 				break;
 
 			case 'n':
@@ -445,6 +461,7 @@ main ( int argc, char** argv )
 			else if ( pid == 0 )
 			{
 				//child
+				loggerOpenFile ( logdir, devnext->dev, verboseLevel >= 1 ? LOGGER_DEBUG : LOGGER_INFO );
 				StartClocks ( devnext );
 
 				loggerf ( LOGGER_INFO, "child process terminated\n" );
@@ -458,6 +475,9 @@ main ( int argc, char** argv )
 		if ( serGetDev(devnext) != NULL )
 			loggerf ( LOGGER_INFO, "Additional serial lines ignored in foreground or debug mode\n" );
 	}
+
+	if ( !debugLevel )
+		loggerOpenFile ( logdir, devfirst->dev, verboseLevel >= 1 ? LOGGER_DEBUG : LOGGER_INFO );
 
 	StartClocks ( devfirst );
 

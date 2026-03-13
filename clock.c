@@ -28,6 +28,7 @@
 #include <math.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <time.h>
 
 #include "memory.h"
 
@@ -92,6 +93,50 @@ void
 clkDataClear ( clkInfoT* clock )
 {
 	clock->numdata = 0;
+}
+
+static const char*
+clkTypeName ( int clocktype )
+{
+	switch ( clocktype )
+	{
+	case CLOCKTYPE_DCF77: return "DCF77";
+	case CLOCKTYPE_MSF:   return "MSF";
+	case CLOCKTYPE_WWVB:  return "WWVB";
+	}
+	return "unknown";
+}
+
+void
+clkDecodeSuccess ( clkInfoT* clock )
+{
+	if ( clock->rx_state != 1 )
+	{
+		time_t		rt;
+		struct tm	tm;
+		char		tbuf[64];
+
+		rt = (time_t)clock->radiotime;
+		gmtime_r ( &rt, &tm );
+		strftime ( tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S UTC", &tm );
+
+		if ( clock->rx_state == 0 )
+			loggerf ( LOGGER_INFO, "%s: first valid time received: %s\n", clkTypeName(clock->clocktype), tbuf );
+		else
+			loggerf ( LOGGER_INFO, "%s: signal recovered: %s\n", clkTypeName(clock->clocktype), tbuf );
+
+		clock->rx_state = 1;
+	}
+}
+
+void
+clkDecodeFailed ( clkInfoT* clock )
+{
+	if ( clock->rx_state == 1 )
+	{
+		loggerf ( LOGGER_INFO, "%s: decode failed, signal lost\n", clkTypeName(clock->clocktype) );
+		clock->rx_state = 2;
+	}
 }
 
 int
@@ -170,9 +215,15 @@ clkProcessStatusChange ( clkInfoT* clock, int status, time_f timef )
 				{
 					clkDumpData ( clock );
 					if ( msfDecode ( clock, clock->changetime ) < 0 )
+					{
 						loggerf ( LOGGER_DEBUG, "warning: failed to decode MSF time\n" );
+						clkDecodeFailed ( clock );
+					}
 					else
+					{
+						clkDecodeSuccess ( clock );
 						clkSendTime ( clock );
+					}
 
 
 					clkDataClear ( clock );
@@ -190,9 +241,15 @@ clkProcessStatusChange ( clkInfoT* clock, int status, time_f timef )
                                     */
 					clkDumpData ( clock );
 					if ( wwvbDecode ( clock, clock->changetime ) < 0 )
+					{
 						loggerf ( LOGGER_DEBUG, "warning: failed to decode WWVB time\n" );
+						clkDecodeFailed ( clock );
+					}
 					else
+					{
+						clkDecodeSuccess ( clock );
 						clkSendTime ( clock );
+					}
 
 					clkDataClear ( clock );
 				}
@@ -233,9 +290,15 @@ clkProcessStatusChange ( clkInfoT* clock, int status, time_f timef )
 			clkDumpData ( clock );
 
 			if ( dcf77Decode ( clock, timef ) < 0 )
+			{
 				loggerf ( LOGGER_DEBUG, "Warning: failed to decode DCF77\n" );
+				clkDecodeFailed ( clock );
+			}
 			else
+			{
+				clkDecodeSuccess ( clock );
 				clkSendTime ( clock );
+			}
 
 
 			clkDataClear ( clock );

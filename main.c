@@ -118,7 +118,7 @@ void
 usage (void)
 {
 	printf (
-"Usage: radioclkd2 [ -s poll|iwait|timepps|gpio ] [ -t dcf77|gps|msf|wwvb ] [ -n <shm start unit> ] [ -l logdir ] [ -d ] [ -v ] tty[:[-]line[:fudgeoffs]] ...\n"
+"Usage: radioclkd2 [ -s poll|iwait|timepps|gpio ] [ -t dcf77|gps|timecode|msf|wwvb ] [ -n <shm start unit> ] [ -l logdir ] [ -d ] [ -v ] tty[:[-]line[:fudgeoffs]] ...\n"
 "   -s poll: poll the serial port 1000 times/sec (poor)\n"
 "   -s iwait: wait for serial port interrupts (ok)\n"
 "   -s timepps: use the timepps interface (good)\n"
@@ -136,6 +136,7 @@ usage (void)
 #endif
 "   -t dcf77: 77.5KHz Germany/Europe DCF77 Radio Station (default)\n"
 "   -t gps: DCF77 encoded data from GPS receiver\n"
+"   -t timecode: hard-wired local time in DCF77 format\n"
 "   -t msf: UK 60KHz MSF Radio Station\n"
 "   -t wwvb: US 60KHz WWVB Fort Collins Radio Station\n"
 "   -n shm#: NTP shared memory start unit - default is 0\n"

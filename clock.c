@@ -345,7 +345,10 @@ clkSendTime ( clkInfoT* clock )
 		tgVerdict	verdict;
 
 		gettimeofday ( &tv, NULL );
-		clock_gettime ( CLOCK_MONOTONIC, &ts );
+		// CLOCK_MONOTONIC_RAW, not CLOCK_MONOTONIC: the latter is slewed by
+		// chrony's NTP frequency correction, which tracks the radio source -
+		// that feedback loop would hide a slow-walk from the drift check.
+		clock_gettime ( CLOCK_MONOTONIC_RAW, &ts );
 		sysNow = (time_f) tv.tv_sec + (time_f) tv.tv_usec / 1e6;
 		monoNow = (time_f) ts.tv_sec + (time_f) ts.tv_nsec / 1e9;
 

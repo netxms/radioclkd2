@@ -150,8 +150,9 @@ usage (void)
 "   --step-threshold <s>: offset above which the clock is stepped (default 0.5)\n"
 "   --bootstrap-window <s>: first-frame offset trusted without confirmation (default 120)\n"
 "   --confirm-count <n>: consistent frames required to confirm a large jump (default 3)\n"
-"   --rate-tolerance <s>: absolute slack for the frame-rate check (default 0.5)\n"
-"   --rate-ppm <ppm>: crystal error allowance for the rate check (default 100)\n"
+"   --jitter-tolerance <s>: per-frame slack for the step check (default 0.05)\n"
+"   --rate-tolerance <s>: one-time slack for the anchored drift check (default 0.05)\n"
+"   --rate-ppm <ppm>: crystal error allowance for the drift check (default 100)\n"
 "   tty: serial port for clock\n"
 "   line: one of dcd, cts, dsr or rng - default is dcd\n"
 "   (if - specified, treat signal as inverted\n"
@@ -198,7 +199,8 @@ main ( int argc, char** argv )
 	guard.stepThreshold = 0.5;
 	guard.bootstrapWindow = 120.0;
 	guard.confirmCount = 3;
-	guard.rateTolerance = 0.5;
+	guard.jitterTol = 0.05;
+	guard.rateTolerance = 0.05;
 	guard.ratePpm = 100.0;
 
 
@@ -244,6 +246,8 @@ main ( int argc, char** argv )
 						guard.bootstrapWindow = atof ( parm );
 					else if ( strcmp ( opt, "confirm-count" ) == 0 )
 						guard.confirmCount = atoi ( parm );
+					else if ( strcmp ( opt, "jitter-tolerance" ) == 0 )
+						guard.jitterTol = atof ( parm );
 					else if ( strcmp ( opt, "rate-tolerance" ) == 0 )
 						guard.rateTolerance = atof ( parm );
 					else if ( strcmp ( opt, "rate-ppm" ) == 0 )

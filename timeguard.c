@@ -25,6 +25,9 @@ tgInit ( tgState* tg )
 	tg->haveBaseline = 0;
 	tg->prevRadioTime = 0;
 	tg->prevMono = 0;
+	tg->haveAnchor = 0;
+	tg->anchorRadio = 0;
+	tg->anchorMono = 0;
 	tg->confirmed = 0;
 }
 
@@ -40,13 +43,28 @@ tgSetBaseline ( tgState* tg, time_f radioTime, time_f monoNow )
 }
 
 /*
+ * Record the current frame as the fixed anchor for the drift check. Set once
+ * when the guard locks and never overwritten afterwards, so the drift check
+ * measures accumulated error against a stationary reference rather than the
+ * previous frame.
+ */
+static void
+tgSetAnchor ( tgState* tg, time_f radioTime, time_f monoNow )
+{
+	tg->anchorRadio = radioTime;
+	tg->anchorMono = monoNow;
+	tg->haveAnchor = 1;
+}
+
+/*
  * True if the radio time advanced consistently with the monotonic clock
- * since the last baseline. The monotonic clock is the device's own crystal,
- * independent of both the system clock and the RTC, so this catches step
- * jumps and rate anomalies (slow-walk spoofing) alike.
+ * since the previous frame. The monotonic clock is the device's own crystal,
+ * independent of both the system clock and the RTC. This catches sudden step
+ * jumps; the slack is the per-frame timestamp jitter plus the crystal error
+ * over the (short) inter-frame interval.
  */
 static int
-tgRateConsistent ( const tgState* tg, time_f radioTime, time_f monoNow )
+tgFrameConsistent ( const tgState* tg, time_f radioTime, time_f monoNow )
 {
 	time_f expected, actual, tol;
 
@@ -58,8 +76,32 @@ tgRateConsistent ( const tgState* tg, time_f radioTime, time_f monoNow )
 	if ( expected < 0 )
 		expected = 0;
 
-	tol = tg->rateTolerance + tg->ratePpm * 1e-6 * expected;
+	tol = tg->jitterTol + tg->ratePpm * 1e-6 * expected;
 	return ( fabs ( actual - expected ) <= tol );
+}
+
+/*
+ * True if the radio time has tracked the monotonic clock since the fixed
+ * anchor was set. Because the anchor never moves, the deviation accumulates
+ * on the left while the tolerance only grows at the allowed crystal rate -
+ * so a slow-walk that stays under the per-frame step check is still caught
+ * once its accumulated drift exceeds the rate envelope.
+ */
+static int
+tgDriftConsistent ( const tgState* tg, time_f radioTime, time_f monoNow )
+{
+	time_f elapsed, drift, tol;
+
+	if ( !tg->haveAnchor )
+		return 1;
+
+	elapsed = monoNow - tg->anchorMono;
+	if ( elapsed < 0 )
+		elapsed = 0;
+
+	drift = ( radioTime - tg->anchorRadio ) - elapsed;
+	tol = tg->rateTolerance + tg->ratePpm * 1e-6 * elapsed;
+	return ( fabs ( drift ) <= tol );
 }
 
 tgVerdict
@@ -89,6 +131,7 @@ tgEvaluate ( tgState* tg, time_f radioTime, time_f monoNow, time_f sysNow )
 		{
 			/* System clock is already close - trust this frame at once. */
 			tgSetBaseline ( tg, radioTime, monoNow );
+			tgSetAnchor ( tg, radioTime, monoNow );
 			tg->phase = TG_PHASE_LOCKED;
 			return ( fabs ( offset ) > tg->stepThreshold ) ? TG_ACCEPT_STEP : TG_ACCEPT_SLEW;
 		}
@@ -101,12 +144,13 @@ tgEvaluate ( tgState* tg, time_f radioTime, time_f monoNow, time_f sysNow )
 		return TG_HOLD;
 
 	case TG_PHASE_CONFIRMING:
-		if ( tgRateConsistent ( tg, radioTime, monoNow ) )
+		if ( tgFrameConsistent ( tg, radioTime, monoNow ) )
 		{
 			tg->confirmed++;
 			tgSetBaseline ( tg, radioTime, monoNow );
 			if ( tg->confirmed >= tg->confirmCount )
 			{
+				tgSetAnchor ( tg, radioTime, monoNow );
 				tg->phase = TG_PHASE_LOCKED;
 				loggerf ( LOGGER_INFO, "timeguard: radio time confirmed over %d frames\n", tg->confirmed );
 				return TG_ACCEPT_STEP;
@@ -123,15 +167,22 @@ tgEvaluate ( tgState* tg, time_f radioTime, time_f monoNow, time_f sysNow )
 
 	case TG_PHASE_LOCKED:
 	default:
-		if ( tgRateConsistent ( tg, radioTime, monoNow ) )
+		if ( !tgFrameConsistent ( tg, radioTime, monoNow ) )
 		{
-			tgSetBaseline ( tg, radioTime, monoNow );
-			return ( fabs ( offset ) > tg->stepThreshold ) ? TG_ACCEPT_STEP : TG_ACCEPT_SLEW;
+			/* Sudden step - keep the last good baseline and drop this frame. */
+			loggerf ( LOGGER_NOTE, "timeguard: frame step "TIMEF_FORMAT" s vs monotonic - possible spoofing\n",
+				( radioTime - tg->prevRadioTime ) - ( monoNow - tg->prevMono ) );
+			return TG_REJECT;
 		}
-		/* Rate anomaly - keep the last good baseline and drop this frame. */
-		loggerf ( LOGGER_NOTE, "timeguard: rate anomaly (radio "TIMEF_FORMAT" vs monotonic) - possible spoofing\n",
-			radioTime - tg->prevRadioTime );
-		return TG_REJECT;
+		if ( !tgDriftConsistent ( tg, radioTime, monoNow ) )
+		{
+			/* Accumulated drift vs the fixed anchor - slow-walk spoofing. */
+			loggerf ( LOGGER_NOTE, "timeguard: drift "TIMEF_FORMAT" s vs anchor over "TIMEF_FORMAT" s - possible slow-walk spoofing\n",
+				( radioTime - tg->anchorRadio ) - ( monoNow - tg->anchorMono ), monoNow - tg->anchorMono );
+			return TG_REJECT;
+		}
+		tgSetBaseline ( tg, radioTime, monoNow );
+		return ( fabs ( offset ) > tg->stepThreshold ) ? TG_ACCEPT_STEP : TG_ACCEPT_SLEW;
 	}
 }
 

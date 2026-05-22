@@ -3,8 +3,9 @@
  *
  * Validates every decoded coarse timestamp before it is allowed to set the
  * system clock or be fed to chrony. Trust is anchored by a static lower bound
- * (firmware build time), an independent monotonic-clock rate check, and an
- * N-frame confirmation for the no-baseline bootstrap. See README / project
+ * (firmware build time), a frame-to-frame monotonic-clock step check, an
+ * anchored monotonic-clock drift check that catches slow-walk spoofing, and
+ * an N-frame confirmation for the no-baseline bootstrap. See README / project
  * documentation for the rationale.
  */
 
@@ -42,7 +43,8 @@ typedef struct
 	time_f	stepThreshold;	/* |offset| above this -> step instead of slew */
 	time_f	bootstrapWindow;/* first-frame offset within this -> trust immediately */
 	int	confirmCount;	/* consecutive consistent frames required to promote */
-	time_f	rateTolerance;	/* absolute slack for the rate check */
+	time_f	jitterTol;	/* per-frame slack: covers pulse-detection jitter */
+	time_f	rateTolerance;	/* one-time slack for the anchored drift check */
 	time_f	ratePpm;	/* crystal error allowance, ppm of the interval */
 
 	/* --- runtime state --- */
@@ -50,6 +52,9 @@ typedef struct
 	int	haveBaseline;	/* prevRadioTime / prevMono are populated */
 	time_f	prevRadioTime;	/* radio time of the last accepted/tentative frame */
 	time_f	prevMono;	/* CLOCK_MONOTONIC at that frame */
+	int	haveAnchor;	/* anchorRadio / anchorMono are populated */
+	time_f	anchorRadio;	/* radio time when the guard locked - never reset */
+	time_f	anchorMono;	/* CLOCK_MONOTONIC at the anchor frame */
 	int	confirmed;	/* consecutive consistent frames seen so far */
 } tgState;
 

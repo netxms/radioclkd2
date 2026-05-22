@@ -25,10 +25,13 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <time.h>
+#include <errno.h>
+#include <sys/time.h>
 
 #include "memory.h"
 
@@ -68,7 +71,7 @@ clkDumpData ( const clkInfoT* clock )
 
 
 clkInfoT*
-clkCreate ( int inverted, int shmunit, time_f fudgeoffset, int clocktype, int dcf77tz )
+clkCreate ( int inverted, int shmunit, time_f fudgeoffset, int clocktype, int dcf77tz, const tgState* guardCfg )
 {
 	clkInfoT*	clkinfo;
 
@@ -85,6 +88,10 @@ clkCreate ( int inverted, int shmunit, time_f fudgeoffset, int clocktype, int dc
 	clkinfo->dcf77tz = dcf77tz;
 
 	clkinfo->shm = shmCreate ( shmunit );
+
+	if ( guardCfg != NULL )
+		clkinfo->guard = *guardCfg;
+	tgInit ( &clkinfo->guard );
 
 	return clkinfo;
 }
@@ -329,6 +336,57 @@ void
 clkSendTime ( clkInfoT* clock )
 {
 	time_f	average, maxerr;
+
+	if ( clock->guard.enabled )
+	{
+		struct timeval	tv;
+		struct timespec	ts;
+		time_f		sysNow, monoNow;
+		tgVerdict	verdict;
+
+		gettimeofday ( &tv, NULL );
+		clock_gettime ( CLOCK_MONOTONIC, &ts );
+		sysNow = (time_f) tv.tv_sec + (time_f) tv.tv_usec / 1e6;
+		monoNow = (time_f) ts.tv_sec + (time_f) ts.tv_nsec / 1e9;
+
+		verdict = tgEvaluate ( &clock->guard, clock->radiotime, monoNow, sysNow );
+		switch ( verdict )
+		{
+		case TG_REJECT:
+			loggerf ( LOGGER_NOTE, "clock: radio time "TIMEF_FORMAT" rejected by time guard (offset "TIMEF_FORMAT" s)\n",
+				clock->radiotime, clock->radiotime - sysNow );
+			tgRaiseSpoofMarker ();
+			return;		/* not fed to chrony, signal marker left untouched */
+
+		case TG_HOLD:
+			return;		/* confirmation in progress - nothing fed yet */
+
+		case TG_ACCEPT_STEP:
+			{
+				struct timeval	newtv;
+				time_f2timeval ( clock->radiotime, &newtv );
+				if ( settimeofday ( &newtv, NULL ) == 0 )
+				{
+					loggerf ( LOGGER_INFO, "clock: system clock stepped to "TIMEF_FORMAT"\n", clock->radiotime );
+					/* discard PPS history that straddles the discontinuity */
+					memset ( clock->ppslist, 0, sizeof(clock->ppslist) );
+					clock->ppsindex = 0;
+					clock->secondssincetime = 0;
+					clock->pctime = clock->radiotime;
+				}
+				else
+				{
+					loggerf ( LOGGER_NOTE, "clock: settimeofday() failed: %s\n", strerror(errno) );
+				}
+			}
+			tgClearSpoofMarker ();
+			break;
+
+		case TG_ACCEPT_SLEW:
+			tgClearSpoofMarker ();
+			break;
+		}
+	}
 
 	if ( clkCalculatePPSAverage ( clock, &average, &maxerr ) < 0 )
 	{

@@ -41,6 +41,7 @@
 #include "settings.h"
 #include "logger.h"
 #include "clock.h"
+#include "timeguard.h"
 #include "serial.h"
 #include "memory.h"
 
@@ -144,6 +145,13 @@ usage (void)
 "   -d: debug mode (runs in the foreground and print pulses)\n"
 "   -f: foreground mode\n"
 "   -v: verbose mode.\n"
+"   --set-system-time: validate decoded time and set the system clock directly\n"
+"   --min-time <epoch>: reject any decoded time before this Unix timestamp\n"
+"   --step-threshold <s>: offset above which the clock is stepped (default 0.5)\n"
+"   --bootstrap-window <s>: first-frame offset trusted without confirmation (default 120)\n"
+"   --confirm-count <n>: consistent frames required to confirm a large jump (default 3)\n"
+"   --rate-tolerance <s>: absolute slack for the frame-rate check (default 0.5)\n"
+"   --rate-ppm <ppm>: crystal error allowance for the rate check (default 100)\n"
 "   tty: serial port for clock\n"
 "   line: one of dcd, cts, dsr or rng - default is dcd\n"
 "   (if - specified, treat signal as inverted\n"
@@ -166,6 +174,7 @@ main ( int argc, char** argv )
 	char*	parm;
 	serDevT*	devfirst;
 	serDevT*	devnext;
+	tgState		guard;
 
 
 	loggerSetFile ( stderr, LOGGER_DEBUG );
@@ -184,6 +193,14 @@ main ( int argc, char** argv )
 
 	shmunit = 0;
 
+	//time guard defaults (disabled unless --set-system-time is given)
+	memset ( &guard, 0, sizeof(guard) );
+	guard.stepThreshold = 0.5;
+	guard.bootstrapWindow = 120.0;
+	guard.confirmCount = 3;
+	guard.rateTolerance = 0.5;
+	guard.ratePpm = 100.0;
+
 
 	if ( argc < 2 )
 		usage();
@@ -198,6 +215,44 @@ main ( int argc, char** argv )
 
 		if ( arg[0] == '-' )
 		{
+			if ( arg[1] == '-' )
+			{
+				//long option
+				char*	opt = arg + 2;
+
+				if ( strcmp ( opt, "set-system-time" ) == 0 )
+				{
+					guard.enabled = 1;
+				}
+				else
+				{
+					//all remaining long options take a value
+					argc--;
+					argv++;
+					if ( argc <= 0 )
+						usage();
+					parm = argv[0];
+
+					if ( strcmp ( opt, "min-time" ) == 0 )
+					{
+						guard.minTime = atof ( parm );
+						guard.maxTime = guard.minTime + TG_MAX_AGE_SECONDS;
+					}
+					else if ( strcmp ( opt, "step-threshold" ) == 0 )
+						guard.stepThreshold = atof ( parm );
+					else if ( strcmp ( opt, "bootstrap-window" ) == 0 )
+						guard.bootstrapWindow = atof ( parm );
+					else if ( strcmp ( opt, "confirm-count" ) == 0 )
+						guard.confirmCount = atoi ( parm );
+					else if ( strcmp ( opt, "rate-tolerance" ) == 0 )
+						guard.rateTolerance = atof ( parm );
+					else if ( strcmp ( opt, "rate-ppm" ) == 0 )
+						guard.ratePpm = atof ( parm );
+					else
+						usage();
+				}
+			}
+			else
 			switch ( arg[1] )
 			{
 			case 's':
@@ -381,7 +436,7 @@ main ( int argc, char** argv )
 			if ( serline == NULL )
 				loggerf ( LOGGER_NOTE, "Error: failed to attach to serial line '%s'\n", arg );
 
-			clock = clkCreate ( negate, shmunit, fudgeoffset, clocktype, dcf77tz );
+			clock = clkCreate ( negate, shmunit, fudgeoffset, clocktype, dcf77tz, &guard );
 			if ( clock == NULL )
 				loggerf ( LOGGER_NOTE, "Error: failed to create clock for serial line '%s'\n", arg );
 

@@ -4,6 +4,7 @@
 #include "systime.h"
 #include "timef.h"
 #include "shm.h"
+#include "timeguard.h"
 
 
 #define	PPS_AVERAGE_COUNT		(60)
@@ -52,12 +53,14 @@ struct clkInfoS
 	shmTimeT*	shm;
 
 	int		rx_state;	//0=initial, 1=receiving, 2=lost
+
+	tgState		guard;		//plausibility gate / system clock control
 };
 
 
 void clkDumpData ( const clkInfoT* clock );
 
-clkInfoT* clkCreate ( int inverted, int shmunit, time_f fudgeoffset, int clocktype, int dcf77tz );
+clkInfoT* clkCreate ( int inverted, int shmunit, time_f fudgeoffset, int clocktype, int dcf77tz, const tgState* guardCfg );
 
 void clkDataClear ( clkInfoT* clock );
 

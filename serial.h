@@ -48,6 +48,9 @@ struct serDevS
 	int		prevlines;
 	time_f		eventtime;
 
+	//transitions dropped by the short pulse filter (diagnostics)
+	unsigned long	glitches;
+
 };
 
 struct serLineS

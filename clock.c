@@ -89,6 +89,8 @@ clkCreate ( int inverted, int shmunit, time_f fudgeoffset, int clocktype, int dc
 
 	clkinfo->shm = shmCreate ( shmunit );
 
+	clkinfo->lastVerdict = CLK_VERDICT_NONE;
+
 	if ( guardCfg != NULL )
 		clkinfo->guard = *guardCfg;
 	tgInit ( &clkinfo->guard );
@@ -100,6 +102,85 @@ void
 clkDataClear ( clkInfoT* clock )
 {
 	clock->numdata = 0;
+}
+
+/*
+ * Discard collected frame data because of a signal error
+ */
+static void
+clkDataDiscard ( clkInfoT* clock, int error, time_f timef, time_f value )
+{
+	clkDataClear ( clock );
+	clock->frameSynced = 0;
+	clock->lastError = error;
+	clock->lastErrorTime = timef;
+	clock->lastErrorValue = value;
+}
+
+const char*
+clkErrorName ( int error )
+{
+	switch ( error )
+	{
+	case CLKERR_NONE:		return "none";
+	case CLKERR_BAD_PULSE:		return "bad pulse length";
+	case CLKERR_BAD_GAP:		return "bad gap length";
+	case CLKERR_OVERFLOW:		return "no minute marker";
+	case CLKERR_FRAME_SHORT:	return "incomplete frame";
+	case CLKERR_START_BIT:		return "start bit missing";
+	case CLKERR_PARITY_MINUTE:	return "minute parity error";
+	case CLKERR_PARITY_HOUR:	return "hour parity error";
+	case CLKERR_PARITY_DATE:	return "date parity error";
+	case CLKERR_PARITY_YEAR:	return "year parity error";
+	case CLKERR_PARITY_WEEKDAY:	return "weekday parity error";
+	case CLKERR_TZ_BITS:		return "invalid time zone bits";
+	case CLKERR_RANGE:		return "field out of range";
+	case CLKERR_CONVERSION:		return "invalid date";
+	}
+	return "unknown";
+}
+
+/*
+ * Record start of a new pulse in the diagnostic history; closes the gap of the previous one
+ */
+static void
+clkHistoryPulseStart ( clkInfoT* clock, time_f timef, time_f gap )
+{
+	clkPulseT*	p;
+
+	if ( clock->pulseCount > 0 )
+	{
+		p = &clock->pulses[(clock->pulseIndex + PULSE_HISTORY_SIZE - 1) % PULSE_HISTORY_SIZE];
+		if ( p->pulseMs >= 0 && p->gapMs < 0 )
+			p->gapMs = (gap < 32.767) ? (short)(gap * 1000.0 + 0.5) : 32767;
+	}
+
+	p = &clock->pulses[clock->pulseIndex];
+	p->start = timef;
+	p->pulseMs = -1;
+	p->gapMs = -1;
+	p->value = -1;
+	clock->pulseIndex = (clock->pulseIndex + 1) % PULSE_HISTORY_SIZE;
+	if ( clock->pulseCount < PULSE_HISTORY_SIZE )
+		clock->pulseCount++;
+}
+
+/*
+ * Record end of the current pulse in the diagnostic history
+ */
+static void
+clkHistoryPulseEnd ( clkInfoT* clock, time_f length, int value )
+{
+	clkPulseT*	p;
+
+	if ( clock->pulseCount == 0 )
+		return;
+
+	p = &clock->pulses[(clock->pulseIndex + PULSE_HISTORY_SIZE - 1) % PULSE_HISTORY_SIZE];
+	if ( p->pulseMs >= 0 )
+		return;
+	p->pulseMs = (length < 32.767) ? (short)(length * 1000.0 + 0.5) : 32767;
+	p->value = (signed char)value;
 }
 
 static const char*
@@ -115,8 +196,13 @@ clkTypeName ( int clocktype )
 }
 
 void
-clkDecodeSuccess ( clkInfoT* clock )
+clkDecodeSuccess ( clkInfoT* clock, time_f timef )
 {
+	clock->stats.framesDecoded++;
+	clock->lastDecodeTime = timef;
+	clock->frameSynced = 1;
+	clock->statusDirty = 1;
+
 	if ( clock->rx_state != 1 )
 	{
 		time_t		rt;
@@ -137,8 +223,15 @@ clkDecodeSuccess ( clkInfoT* clock )
 }
 
 void
-clkDecodeFailed ( clkInfoT* clock )
+clkDecodeFailed ( clkInfoT* clock, time_f timef )
 {
+	clock->stats.framesFailed++;
+	clock->lastError = clock->decodeError;
+	clock->lastErrorTime = timef;
+	clock->lastErrorValue = 0;
+	clock->frameSynced = 1;
+	clock->statusDirty = 1;
+
 	if ( clock->rx_state == 1 )
 	{
 		loggerf ( LOGGER_INFO, "%s: decode failed, signal lost\n", clkTypeName(clock->clocktype) );
@@ -185,7 +278,19 @@ clkProcessStatusChange ( clkInfoT* clock, int status, time_f timef )
 {
 	time_f diff;
 	int	val;
+	int	first;
 
+
+	//no previous transition to measure from - lengths are meaningless
+	first = (clock->changetime == 0);
+
+	//diagnostics - raw line level and edge statistics
+	if ( status != clock->level || clock->lastEdge == 0 )
+	{
+		clock->stats.edges++;
+		clock->lastEdge = timef;
+	}
+	clock->level = status;
 
 	if ( clock->inverted )
 		status = !status;
@@ -197,18 +302,29 @@ clkProcessStatusChange ( clkInfoT* clock, int status, time_f timef )
 	{
 		val = clkPulseLength ( diff, clock->clocktype );
 
+		clkHistoryPulseEnd ( clock, diff, val );
 
 		if ( val < 0 )
 		{
 			loggerf ( LOGGER_TRACE, "warning: bad pulse length "TIMEF_FORMAT"\n", diff );
 
-			clkDataClear ( clock );
+			if ( !first )
+			{
+				clock->stats.pulsesBad++;
+				clkDataDiscard ( clock, CLKERR_BAD_PULSE, timef, diff );
+			}
+			else
+			{
+				clkDataClear ( clock );
+			}
 		}
 		else
 		{
+			clock->stats.pulsesGood++;
+
 			//make sure we dont go off the end - unlikely but could happen with noise...
 			if ( clock->numdata >= 120 )
-				clkDataClear ( clock );
+				clkDataDiscard ( clock, CLKERR_OVERFLOW, timef, 0 );
 
 			if ( clock->msf_skip_b && (val == 1) )
 			{
@@ -224,11 +340,11 @@ clkProcessStatusChange ( clkInfoT* clock, int status, time_f timef )
 					if ( msfDecode ( clock, clock->changetime ) < 0 )
 					{
 						loggerf ( LOGGER_DEBUG, "warning: failed to decode MSF time\n" );
-						clkDecodeFailed ( clock );
+						clkDecodeFailed ( clock, timef );
 					}
 					else
 					{
-						clkDecodeSuccess ( clock );
+						clkDecodeSuccess ( clock, timef );
 						clkSendTime ( clock );
 					}
 
@@ -250,11 +366,11 @@ clkProcessStatusChange ( clkInfoT* clock, int status, time_f timef )
 					if ( wwvbDecode ( clock, clock->changetime ) < 0 )
 					{
 						loggerf ( LOGGER_DEBUG, "warning: failed to decode WWVB time\n" );
-						clkDecodeFailed ( clock );
+						clkDecodeFailed ( clock, timef );
 					}
 					else
 					{
-						clkDecodeSuccess ( clock );
+						clkDecodeSuccess ( clock, timef );
 						clkSendTime ( clock );
 					}
 
@@ -279,11 +395,21 @@ clkProcessStatusChange ( clkInfoT* clock, int status, time_f timef )
 
 		val = clkPulseLength ( diff, clock->clocktype );
 
+		clkHistoryPulseStart ( clock, timef, diff );
+
 		if ( val < 0 )
 		{
 			loggerf ( LOGGER_TRACE, "warning: bad clear length "TIMEF_FORMAT"\n", diff );
 
-			clkDataClear ( clock );
+			if ( !first )
+			{
+				clock->stats.gapsBad++;
+				clkDataDiscard ( clock, CLKERR_BAD_GAP, timef, diff );
+			}
+			else
+			{
+				clkDataClear ( clock );
+			}
 		}
 		else if ( (clock->numdata > 1) && (clock->data[clock->numdata-1] == 1) && (val == 1) )
 		{
@@ -299,11 +425,11 @@ clkProcessStatusChange ( clkInfoT* clock, int status, time_f timef )
 			if ( dcf77Decode ( clock, timef ) < 0 )
 			{
 				loggerf ( LOGGER_DEBUG, "Warning: failed to decode DCF77\n" );
-				clkDecodeFailed ( clock );
+				clkDecodeFailed ( clock, timef );
 			}
 			else
 			{
-				clkDecodeSuccess ( clock );
+				clkDecodeSuccess ( clock, timef );
 				clkSendTime ( clock );
 			}
 
@@ -353,15 +479,19 @@ clkSendTime ( clkInfoT* clock )
 		monoNow = (time_f) ts.tv_sec + (time_f) ts.tv_nsec / 1e9;
 
 		verdict = tgEvaluate ( &clock->guard, clock->radiotime, monoNow, sysNow );
+		clock->lastVerdict = verdict;
+		clock->lastVerdictOffset = clock->radiotime - sysNow;
 		switch ( verdict )
 		{
 		case TG_REJECT:
+			clock->stats.guardRejects++;
 			loggerf ( LOGGER_NOTE, "clock: radio time "TIMEF_FORMAT" rejected by time guard (offset "TIMEF_FORMAT" s)\n",
 				clock->radiotime, clock->radiotime - sysNow );
 			tgRaiseSpoofMarker ();
 			return;		/* not fed to chrony, signal marker left untouched */
 
 		case TG_HOLD:
+			clock->stats.guardHolds++;
 			return;		/* confirmation in progress - nothing fed yet */
 
 		case TG_ACCEPT_STEP:
@@ -371,6 +501,7 @@ clkSendTime ( clkInfoT* clock )
 				if ( settimeofday ( &newtv, NULL ) == 0 )
 				{
 					loggerf ( LOGGER_INFO, "clock: system clock stepped to "TIMEF_FORMAT"\n", clock->radiotime );
+					clock->stats.clockSteps++;
 					/* discard PPS history that straddles the discontinuity */
 					memset ( clock->ppslist, 0, sizeof(clock->ppslist) );
 					clock->ppsindex = 0;
@@ -404,6 +535,12 @@ clkSendTime ( clkInfoT* clock )
 		loggerf ( LOGGER_DEBUG, "clock: radio time "TIMEF_FORMAT", average pctime "TIMEF_FORMAT", error +-"TIMEF_FORMAT"\n", clock->radiotime, clock->radiotime + average, maxerr );
 
 		shmStore ( clock->shm, clock->radiotime, clock->radiotime + average, maxerr, clock->radioleap );
+	}
+
+	{
+		struct timeval	fedtv;
+		gettimeofday ( &fedtv, NULL );
+		timeval2time_f ( &fedtv, clock->lastFedTime );
 	}
 
 	int fh = open("/tmp/clock-timestamp", O_WRONLY | O_CREAT | O_TRUNC, 0644);

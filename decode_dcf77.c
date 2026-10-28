@@ -109,25 +109,25 @@ dcf77Decode ( clkInfoT* clock, time_f minstart )
 	dcf77Dump ( clock );
 
 	if ( !DATA_OK(15) )
-		return -1;
+		{ clock->decodeError = CLKERR_FRAME_SHORT; return -1; }
 
 
 	if ( !GET(20) )	//start bit
-		return -1;
+		{ clock->decodeError = CLKERR_START_BIT; return -1; }
 
 
 	if ( dcf77CheckParity ( clock, 21, 7, 28 ) )	//minutes parity
-		return -1;
+		{ clock->decodeError = CLKERR_PARITY_MINUTE; return -1; }
 
 	if ( dcf77CheckParity ( clock, 29, 6, 35 ) )	//hours parity
-		return -1;
+		{ clock->decodeError = CLKERR_PARITY_HOUR; return -1; }
 
 	if ( dcf77CheckParity ( clock, 36, 22, 58 ) )	//day/dow/month/year parity
-		return -1;
+		{ clock->decodeError = CLKERR_PARITY_DATE; return -1; }
 
 
 	if ( !(GET(17) ^ GET(18)) )	//only one of Z1/Z2 should be set
-		return -1;
+		{ clock->decodeError = CLKERR_TZ_BITS; return -1; }
 
 	memset ( &dectime, 0, sizeof(dectime) );
 	dectime.tm_year = dcf77GetBCD ( clock, 50, 8 ) + CENTURY - 1900;
@@ -142,16 +142,9 @@ dcf77Decode ( clkInfoT* clock, time_f minstart )
 	if ( dectime.tm_wday == 7 )
 		dectime.tm_wday = 0;
 
-	if ( dectime.tm_mon > 11 )
-		return -1;
-	if ( (dectime.tm_mday < 1) || (dectime.tm_mday > 31) )
-		return -1;
-	if ( dectime.tm_wday > 6 )
-		return -1;
-	if ( dectime.tm_hour > 23 )
-		return -1;
-	if ( dectime.tm_min > 60 )
-		return -1;
+	if ( (dectime.tm_mon > 11) || (dectime.tm_mday < 1) || (dectime.tm_mday > 31) ||
+	     (dectime.tm_wday > 6) || (dectime.tm_hour > 23) || (dectime.tm_min > 60) )
+		{ clock->decodeError = CLKERR_RANGE; return -1; }
 	/*                                   year mon  mday     wday hour min  TZ-info-leap-ant */
 	loggerf ( LOGGER_DEBUG, "DCF77 time: %04d-%02d-%02d (day %d) %02d:%02d %s%s%s%s\n",
 		dectime.tm_year+1900, dectime.tm_mon+1, dectime.tm_mday,
@@ -164,7 +157,7 @@ dcf77Decode ( clkInfoT* clock, time_f minstart )
 
 	dectimet = (clock->dcf77tz == DCF77_TIMEZONE_LOCAL) ? mktime( &dectime ) :	timegm( &dectime );
 	if ( dectimet == (time_t)(-1) )
-		return -1;
+		{ clock->decodeError = CLKERR_CONVERSION; return -1; }
 
 	//correct for DST offset...
 	if (clock->dcf77tz == DCF77_TIMEZONE_CET)
@@ -173,6 +166,8 @@ dcf77Decode ( clkInfoT* clock, time_f minstart )
 	clock->pctime = minstart;
 	clock->radiotime = dectimet + clock->fudgeoffset;
 	clock->radioleap = GET(19) ? LEAP_ADDSECOND : LEAP_NOWARNING;
+	clock->radioflags = (GET(17) ? CLKFLAG_DST : 0) | (GET(16) ? CLKFLAG_DST_ANNOUNCE : 0) |
+		(GET(19) ? CLKFLAG_LEAP_ANNOUNCE : 0) | (GET(15) ? CLKFLAG_BACKUP_ANTENNA : 0);
 
 	clock->secondssincetime = 0;
 	return 0;

@@ -26,6 +26,7 @@ The signal processing pipeline flows: **serial I/O → pulse classification → 
 - **`decode_dcf77.c`**, **`decode_msf.c`**, **`decode_wwvb.c`** — Protocol-specific BCD/binary decoders that validate parity/checksums and produce a `struct tm`.
 - **`shm.c`** — Writes decoded timestamps to ntpd's SHM segment (key `0x4e545030 + unit`), using memory barriers for cross-process atomicity.
 - **`logger.c`** — Logs to stderr and syslog at configurable verbosity (NOTE/INFO/DEBUG/TRACE).
+- **`status.c`** — Optional diagnostics (`--status-file <path>`): JSON snapshot of line level, last 60 pulse/gap lengths, bits of the frame being collected, last decode result or failure reason (`CLKERR_*`), counters, PPS statistics and time guard state. Written atomically (temp file + rename) from the main loop at most once per second, immediately after a decode or guard verdict, and on every wait timeout when there is no signal. Removed on SIGTERM/SIGINT. Additional units get a `.<unit>` suffix.
 
 ## Key Design Details
 

@@ -44,6 +44,7 @@
 #include "timeguard.h"
 #include "serial.h"
 #include "memory.h"
+#include "status.h"
 
 
 #if !HAVE_STRCASECMP
@@ -59,10 +60,14 @@ typedef struct
 	char*		name;
 	serLineT*	serline;
 	clkInfoT*	clock;
+	char*		statusPath;	//diagnostic status file, NULL if disabled
 } serClockT;
 
 #define	MAX_CLOCKS		(16)
 serClockT	clocklist[MAX_CLOCKS];
+
+//serial device handled by this process (for cleanup on termination)
+static serDevT*	currentDev = NULL;
 
 void StartClocks ( serDevT* serdev );
 
@@ -115,11 +120,28 @@ setDemon (void)
 	}
 }
 
+/*
+ * Remove status files of this process on termination, so that stale
+ * diagnostics are not mistaken for a live receiver
+ */
+static void
+sigterm ( int sig )
+{
+	int	c;
+
+	for ( c = 0; c<MAX_CLOCKS; c++ )
+	{
+		if ( clocklist[c].statusPath != NULL && clocklist[c].serline != NULL && clocklist[c].serline->dev == currentDev )
+			unlink ( clocklist[c].statusPath );
+	}
+	_exit ( 0 );
+}
+
 void
 usage (void)
 {
 	printf (
-"Usage: radioclkd2 [ -s poll|iwait|timepps|gpio ] [ -t dcf77|gps|timecode|msf|wwvb ] [ -n <shm start unit> ] [ -l logdir ] [ -d ] [ -v ] tty[:[-]line[:fudgeoffs]] ...\n"
+"Usage: radioclkd2 [ -s poll|iwait|timepps|gpio ] [ -t dcf77|gps|timecode|msf|wwvb ] [ -n <shm start unit> ] [ -l logdir ] [ -d ] [ -v ] [ --status-file <path> ] tty[:[-]line[:fudgeoffs]] ...\n"
 "   -s poll: poll the serial port 1000 times/sec (poor)\n"
 "   -s iwait: wait for serial port interrupts (ok)\n"
 "   -s timepps: use the timepps interface (good)\n"
@@ -153,6 +175,8 @@ usage (void)
 "   --jitter-tolerance <s>: per-frame slack for the step check (default 0.05)\n"
 "   --rate-tolerance <s>: one-time slack for the anchored drift check (default 0.05)\n"
 "   --rate-ppm <ppm>: crystal error allowance for the drift check (default 100)\n"
+"   --status-file <path>: write receiver diagnostics as JSON to this file\n"
+"         (additional units get .<unit> suffix)\n"
 "   tty: serial port for clock\n"
 "   line: one of dcd, cts, dsr or rng - default is dcd\n"
 "   (if - specified, treat signal as inverted\n"
@@ -171,6 +195,8 @@ main ( int argc, char** argv )
 	int     dcf77tz = DCF77_TIMEZONE_CET;
 	int     foreground = 0;
 	char*	logdir = "/var/log/radioclkd2";
+	char*	statusFile = NULL;
+	int	firstunit;
 	char*	arg;
 	char*	parm;
 	serDevT*	devfirst;
@@ -193,6 +219,7 @@ main ( int argc, char** argv )
 #endif
 
 	shmunit = 0;
+	firstunit = -1;
 
 	//time guard defaults (disabled unless --set-system-time is given)
 	memset ( &guard, 0, sizeof(guard) );
@@ -252,6 +279,8 @@ main ( int argc, char** argv )
 						guard.rateTolerance = atof ( parm );
 					else if ( strcmp ( opt, "rate-ppm" ) == 0 )
 						guard.ratePpm = atof ( parm );
+					else if ( strcmp ( opt, "status-file" ) == 0 )
+						statusFile = parm;
 					else
 						usage();
 				}
@@ -453,6 +482,22 @@ main ( int argc, char** argv )
 
 				loggerf ( LOGGER_INFO, "Added clock unit %d on line '%s'\n", shmunit, arg );
 
+				if ( statusFile != NULL )
+				{
+					if ( firstunit < 0 )
+						firstunit = shmunit;
+					if ( shmunit == firstunit )
+					{
+						clocklist[shmunit].statusPath = safe_xstrcpy ( statusFile, -1 );
+					}
+					else
+					{
+						char	path[256];
+						snprintf ( path, sizeof(path), "%s.%d", statusFile, shmunit );
+						clocklist[shmunit].statusPath = safe_xstrcpy ( path, -1 );
+					}
+				}
+
 				shmunit++;
 			}
 		}
@@ -552,9 +597,15 @@ StartClocks ( serDevT* serdev )
 {
 	serLineT*	serline;
 	int		c;
+	struct timeval	tv;
+	time_f		now, lastStatusWrite;
 
 
 	loggerf ( LOGGER_INFO, "pid %d for device %s\n", getpid(), serdev->dev );
+
+	currentDev = serdev;
+	signal ( SIGTERM, sigterm );
+	signal ( SIGINT, sigterm );
 
 	if ( serInitHardware ( serdev ) < 0 )
 	{
@@ -562,8 +613,25 @@ StartClocks ( serDevT* serdev )
 		return;
 	}
 
+	lastStatusWrite = 0;
+
 	while(1)
 	{
+		//publish diagnostics when something happened, otherwise at most once per interval
+		//(with no signal this runs on every wait timeout)
+		gettimeofday ( &tv, NULL );
+		timeval2time_f ( &tv, now );
+		for ( c = 0; c<MAX_CLOCKS; c++ )
+		{
+			if ( clocklist[c].statusPath != NULL && clocklist[c].serline != NULL && clocklist[c].serline->dev == serdev &&
+			     ( clocklist[c].clock->statusDirty || now - lastStatusWrite >= STATUS_WRITE_INTERVAL || now < lastStatusWrite ) )
+			{
+				statusWrite ( clocklist[c].statusPath, clocklist[c].name, c, serdev, clocklist[c].clock );
+			}
+		}
+		if ( now - lastStatusWrite >= STATUS_WRITE_INTERVAL || now < lastStatusWrite )
+			lastStatusWrite = now;
+
 		if ( serWaitForSerialChange ( serdev ) < 0 )
 		{
 			loggerf ( LOGGER_DEBUG, "no serial line change\n" );

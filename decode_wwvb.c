@@ -92,7 +92,7 @@ wwvbDecode ( clkInfoT* clock, time_f minstart )
 	wwvbDump ( clock );
 
 	if ( !DATA_OK(1) )
-		return -1;
+		{ clock->decodeError = CLKERR_FRAME_SHORT; return -1; }
 
 	memset ( &dectime, 0, sizeof(dectime) );
 
@@ -106,12 +106,8 @@ wwvbDecode ( clkInfoT* clock, time_f minstart )
 
 	//NOTE: decoding this depends on a mktime() which will normalize day numbers correctly
 
-	if ( (dectime.tm_mday < 1) || (dectime.tm_mday > 366) )
-		return -1;
-	if ( dectime.tm_hour > 23 )
-		return -1;
-	if ( dectime.tm_min > 60 )
-		return -1;
+	if ( (dectime.tm_mday < 1) || (dectime.tm_mday > 366) || (dectime.tm_hour > 23) || (dectime.tm_min > 60) )
+		{ clock->decodeError = CLKERR_RANGE; return -1; }
 
         /*
                 WWVB Sends the on-time marker, which is back-to-back 0.8s pulses
@@ -130,11 +126,12 @@ wwvbDecode ( clkInfoT* clock, time_f minstart )
 
 	dectimet = timegm( &dectime );
 	if ( dectimet == (time_t)(-1) )
-		return -1;
+		{ clock->decodeError = CLKERR_CONVERSION; return -1; }
 
 	clock->pctime = minstart;
 	clock->radiotime = dectimet + clock->fudgeoffset;
 	clock->radioleap = GET(56) ? LEAP_ADDSECOND : LEAP_NOWARNING;
+	clock->radioflags = GET(56) ? CLKFLAG_LEAP_ANNOUNCE : 0;
 
 	clock->secondssincetime = 0;
 

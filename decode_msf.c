@@ -130,21 +130,21 @@ msfDecode ( clkInfoT* clock, time_f minstart )
 
 	//make sure the earliest bit we look at is there.. (start of year)
 	if ( !DATA_OK(17) )
-		return -1;
+		{ clock->decodeError = CLKERR_FRAME_SHORT; return -1; }
 
 	//first, check that the parity bits make sense...
 
 	if ( !msfCheckParity ( clock, 17, 8, 54 ) )	//year...
-		return -1;
+		{ clock->decodeError = CLKERR_PARITY_YEAR; return -1; }
 
 	if ( !msfCheckParity ( clock, 25, 11, 55 ) )	//month/month day...
-		return -1;
+		{ clock->decodeError = CLKERR_PARITY_DATE; return -1; }
 
 	if ( !msfCheckParity ( clock, 36, 3, 56 ) )	//day of week...
-		return -1;
+		{ clock->decodeError = CLKERR_PARITY_WEEKDAY; return -1; }
 
 	if ( !msfCheckParity ( clock, 39, 13, 57 ) )	//hour/minute...
-		return -1;
+		{ clock->decodeError = CLKERR_PARITY_HOUR; return -1; }
 
 	memset ( &dectime, 0, sizeof(dectime) );
 
@@ -159,23 +159,16 @@ msfDecode ( clkInfoT* clock, time_f minstart )
 
 	//now do some sanity checks on the decoded time values...
 //TODO: check year value..
-	if ( dectime.tm_mon > 11 )
-		return -1;
-	if ( (dectime.tm_mday < 1) || (dectime.tm_mday > 31) )
-		return -1;
-	if ( dectime.tm_wday > 6 )
-		return -1;
-	if ( dectime.tm_hour > 23 )
-		return -1;
-	if ( dectime.tm_min > 60 )
-		return -1;
+	if ( (dectime.tm_mon > 11) || (dectime.tm_mday < 1) || (dectime.tm_mday > 31) ||
+	     (dectime.tm_wday > 6) || (dectime.tm_hour > 23) || (dectime.tm_min > 60) )
+		{ clock->decodeError = CLKERR_RANGE; return -1; }
 
 	loggerf ( LOGGER_DEBUG, "MSF time: %04d-%02d-%02d (day %d) %02d:%02d %s%s\n", dectime.tm_year+1900, dectime.tm_mon, dectime.tm_mday, dectime.tm_wday, dectime.tm_hour, dectime.tm_min, GET_B(58) ? "BST" : "GMT", GET_B(53) ? " timezone change soon":"" );
 
 	dectimet = timegm ( &dectime );
 
 	if ( dectimet == (time_t)(-1) )
-		return -1;
+		{ clock->decodeError = CLKERR_CONVERSION; return -1; }
 
 	//correct for DST offset...
 	dectimet -= GET_B(58) ? 1*60*60 : 0*60*60;
@@ -185,6 +178,7 @@ msfDecode ( clkInfoT* clock, time_f minstart )
 	clock->pctime = minstart;
 	clock->radiotime = dectimet + clock->fudgeoffset;
 	clock->radioleap = LEAP_NOWARNING;
+	clock->radioflags = (GET_B(58) ? CLKFLAG_DST : 0) | (GET_B(53) ? CLKFLAG_DST_ANNOUNCE : 0);
 
 	clock->secondssincetime = 0;
 

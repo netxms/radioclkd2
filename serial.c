@@ -411,6 +411,8 @@ serStoreDevStatusLines ( serDevT* dev, int lines, time_f timef )
 	time_f diff = timef - dev->eventtime;
 	if (diff < 0.05) {
 		loggerf ( LOGGER_DEBUG, "serStoreDevStatusLines: pulse too short %f, filtering!\n", diff);
+		if ( lines != dev->curlines )
+			dev->glitches++;
 		return 0;
 	}
 	if ( lines != dev->curlines )

@@ -67,8 +67,30 @@ serLineT*
 serAddLine ( char* dev, int line, int mode )
 {
 	char		fulldev[64];
+	char		devbuf[128];
+	char*		auxdev = NULL;
 	serDevT*	serdev;
 	serLineT*	serline;
+
+	//GPIO mode allows "path1+path2" - both GPIO lines are combined by logical OR
+	if ( mode == SERPORT_MODE_GPIO && strchr ( dev, '+' ) != NULL )
+	{
+		if ( strlen(dev) >= sizeof(devbuf) )
+		{
+			loggerf ( LOGGER_NOTE, "serAddLine(): dev too long\n" );
+			return NULL;
+		}
+		strcpy ( devbuf, dev );
+		auxdev = strchr ( devbuf, '+' );
+		*auxdev++ = 0;
+		dev = devbuf;
+
+		if ( auxdev[0] != '/' || strlen(auxdev) >= 64 )
+		{
+			loggerf ( LOGGER_NOTE, "serAddLine(): invalid second GPIO device '%s'\n", auxdev );
+			return NULL;
+		}
+	}
 
 	//allow for either full paths or /dev relative paths...
 	if ( dev[0] == '/' )
@@ -114,9 +136,17 @@ serAddLine ( char* dev, int line, int mode )
 		serDevHead = serdev;
 
 		strcpy ( serdev->dev, fulldev );
+		if ( auxdev != NULL )
+			strcpy ( serdev->auxdev, auxdev );
 		serdev->mode = mode;
 		serdev->modemlines = 0;
 		serdev->fd = -1;
+		serdev->auxfd = -1;
+	}
+	else if ( strcmp ( serdev->auxdev, (auxdev != NULL) ? auxdev : "" ) != 0 )
+	{
+		loggerf ( LOGGER_NOTE, "serAddLine(): cannot add line for same device with different second GPIO device\n" );
+		return NULL;
 	}
 
 	//make sure we're using it in the same mode...
@@ -183,6 +213,20 @@ serOpenDev ( serDevT* dev )
 
 	switch ( dev->mode )
 	{
+#ifdef ENABLE_GPIO
+	case SERPORT_MODE_GPIO:
+		if ( dev->fd >= 0 && dev->auxdev[0] != 0 )
+		{
+			dev->auxfd = open ( dev->auxdev, O_RDONLY|O_NOCTTY );
+			if ( dev->auxfd < 0 )
+			{
+				loggerf ( LOGGER_NOTE, "Error: cannot open second GPIO device %s\n", dev->auxdev );
+				close ( dev->fd );
+				dev->fd = -1;
+			}
+		}
+		break;
+#endif
 #ifdef ENABLE_TIMEPPS
 	case SERPORT_MODE_TIMEPPS:
 		if ( time_pps_create ( dev->fd, &dev->ppshandle ) == -1 )
@@ -259,7 +303,7 @@ serWaitForSerialChange ( serDevT* dev )
 	int		ppslines;
 #endif
 #ifdef ENABLE_GPIO
-	struct pollfd pfd;
+	struct pollfd pfd[2];
 #endif
 
 	if ( dev->modemlines == 0 )
@@ -288,11 +332,15 @@ serWaitForSerialChange ( serDevT* dev )
 
 #ifdef ENABLE_GPIO
 	case SERPORT_MODE_GPIO:
-		pfd.fd = dev->fd;
-		pfd.events = POLLPRI;
+		pfd[0].fd = dev->fd;
+		pfd[0].events = POLLPRI;
+		pfd[0].revents = 0;
+		pfd[1].fd = dev->auxfd;
+		pfd[1].events = POLLPRI;
+		pfd[1].revents = 0;
 
-		i = poll(&pfd, 1, 10000); /* timeout 10 seconds */
-		if ((i != 1) || !(pfd.revents & POLLPRI))
+		i = poll(pfd, (dev->auxfd >= 0) ? 2 : 1, 10000); /* timeout 10 seconds */
+		if ((i < 1) || !((pfd[0].revents | pfd[1].revents) & POLLPRI))
 			return -1;
 
 		gettimeofday(&tv, NULL);
@@ -393,6 +441,17 @@ serGetDevStatusLines ( serDevT* dev, time_f timef )
 			lines = TIOCM_CD;
 		else
 			lines = 0;
+
+		// Second GPIO line (if any) is combined by logical OR; both files must
+		// be read to clear pending poll() notification
+		if (dev->auxfd >= 0) {
+			if (lseek(dev->auxfd, 0, SEEK_SET) == -1)
+				return -1;
+			if (read(dev->auxfd, buf, sizeof(buf)) <= 0)
+				return -1;
+			if (buf[0] == '1')
+				lines = TIOCM_CD;
+		}
 
 		return serStoreDevStatusLines ( dev, lines, timef );
 	}

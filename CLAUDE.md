@@ -44,4 +44,4 @@ radioclkd2 -s gpio -d /sys/class/gpio/gpio0/value:-DCD  # GPIO mode
 radioclkd2 -s iwait -t msf -n 1 -v /dev/ttyS0  # MSF, SHM unit 1, verbose
 ```
 
-Device format: `tty[:[-]line[:fudgeoffs]]` where line is `dcd|cts|dsr|rng`, `-` prefix inverts polarity, and fudgeoffs is a time correction in seconds.
+Device format: `tty[:[-]line[:fudgeoffs]]` where line is `dcd|cts|dsr|rng`, `-` prefix inverts polarity, and fudgeoffs is a time correction in seconds. In GPIO mode `tty` may be `path1+path2`: both GPIO lines are combined by logical OR before polarity inversion (used for polarized time code, where alternate minutes arrive on different optocouplers).

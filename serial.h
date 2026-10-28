@@ -24,6 +24,10 @@ struct serDevS
 	//full device name (including "/dev/")
 	char		dev[64];
 
+	//optional second GPIO value file, combined with the first one by logical OR
+	//(empty if not used)
+	char		auxdev[64];
+
 #define	SERPORT_MODE_IWAIT	(1)
 #define	SERPORT_MODE_POLL	(2)
 #define	SERPORT_MODE_TIMEPPS	(3)
@@ -37,6 +41,7 @@ struct serDevS
 
 	//once opened, the fd for this device
 	int		fd;
+	int		auxfd;
 #ifdef ENABLE_TIMEPPS
 	pps_handle_t	ppshandle;
 	int		ppslastassert;

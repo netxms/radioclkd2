@@ -148,6 +148,7 @@ usage (void)
 "   -s gpio: use /sys/class/gpio/gpioX/value for tty\n"
 "         setup \"edges\" to \"both\", uses poll() for GPIO pin interrupts\n"
 "         GPIO pulses are simulating DCD, so use :DCD and :-DCD for polarity\n"
+"         path1+path2 combines two GPIO lines by logical OR before polarity is applied\n"
 #ifndef ENABLE_TIMEPPS
 "  (timepps not available)\n"
 #endif
